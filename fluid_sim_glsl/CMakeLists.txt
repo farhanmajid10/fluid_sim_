@@ -43,7 +43,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${OPENGL_INCLUDE_DIRS}
 )   
 
-# Link libraries - FIXED: Changed flgl to FLGL
+# Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     FLGL
     ${OPENGL_LIBRARIES}
@@ -51,12 +51,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 # Platform-specific settings
 if(WIN32)
-    # Windows specific settings
     set_target_properties(${PROJECT_NAME} PROPERTIES
         VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
 elseif(APPLE)
-    # macOS specific settings
     find_library(COCOA_LIBRARY Cocoa)
     find_library(IOKIT_LIBRARY IOKit)
     find_library(COREVIDEO_LIBRARY CoreVideo)
@@ -66,7 +64,6 @@ elseif(APPLE)
         ${COREVIDEO_LIBRARY}
     )
 elseif(UNIX)
-    # Linux specific settings
     find_package(X11 REQUIRED)
     find_package(Threads REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE 
@@ -76,39 +73,64 @@ elseif(UNIX)
     )
 endif()
 
-# Copy shaders to build directory
+# FIXED SHADER COPYING - Now copies to multiple locations
+# Create all possible shader directories FLGL might look in
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/shaders)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders)
 
 # List of shader files
-set(SHADER_FILES
-    lbm_init.vert
-    lbm_init.frag
-    lbm_collision.vert
-    lbm_collision.frag
-    lbm_streaming.vert
-    lbm_streaming.frag
-    lbm_boundary.vert
-    lbm_boundary.frag
-    lbm_mouse.vert
-    lbm_mouse.frag
-    lbm_macroscopic.vert
-    lbm_macroscopic.frag
-    visualization.vert
-    visualization.frag
+set(SHADER_NAMES
+    lbm_init
+    lbm_collision
+    lbm_streaming
+    lbm_boundary
+    lbm_mouse
+    lbm_macroscopic
+    visualization
 )
 
-# Copy each shader file
-foreach(SHADER ${SHADER_FILES})
+# Copy shaders to all possible locations FLGL might check
+foreach(SHADER_NAME ${SHADER_NAMES})
+    # Copy to build/shaders (our intended location)
     configure_file(
-        ${CMAKE_SOURCE_DIR}/shaders/${SHADER}
-        ${CMAKE_BINARY_DIR}/shaders/${SHADER}
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.vert
+        ${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}.vert
+        COPYONLY
+    )
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.frag
+        ${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}.frag
+        COPYONLY
+    )
+    
+    # Copy to where FLGL expects them with .glsl extension
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.vert
+        ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}.glsl
+        COPYONLY
+    )
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.frag
+        ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}_frag.glsl
+        COPYONLY
+    )
+    
+    # Also try with .vert.glsl and .frag.glsl extensions
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.vert
+        ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}.vert.glsl
+        COPYONLY
+    )
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.frag
+        ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}.frag.glsl
         COPYONLY
     )
 endforeach()
 
 # Add custom target for shader copying
 add_custom_target(copy_shaders ALL
-    COMMENT "Copying shader files to build directory"
+    COMMENT "Copying shader files to multiple locations for FLGL compatibility"
 )
 
 # Make executable depend on shader copying

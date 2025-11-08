@@ -78,17 +78,15 @@ public:
         // Create screen quad mesh
         screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices);
         
-        // Set shader path FIRST (this tells FLGL where to look)
-        glconfig.set_shader_path("./shaders/");
-
-        // Load all shaders (name only, no path, no extension)
-        initShader.create("lbm_init", "lbm_init");
-        collisionShader.create("lbm_collision", "lbm_collision");
-        streamingShader.create("lbm_streaming", "lbm_streaming");
-        boundaryShader.create("lbm_boundary", "lbm_boundary");
-        mouseShader.create("lbm_mouse", "lbm_mouse");
-        macroscopicShader.create("lbm_macroscopic", "lbm_macroscopic");
-        visualizationShader.create("visualization", "visualization");
+       // Load shaders with correct naming
+        // FLGL expects: vertex = name.glsl, fragment = name_frag.glsl
+        initShader.create("lbm_init", "lbm_init_frag");
+        collisionShader.create("lbm_collision", "lbm_collision_frag");
+        streamingShader.create("lbm_streaming", "lbm_streaming_frag");
+        boundaryShader.create("lbm_boundary", "lbm_boundary_frag");
+        mouseShader.create("lbm_mouse", "lbm_mouse_frag");
+        macroscopicShader.create("lbm_macroscopic", "lbm_macroscopic_frag");
+        visualizationShader.create("visualization", "visualization_frag");
         
         // Create textures
         createTextures();
