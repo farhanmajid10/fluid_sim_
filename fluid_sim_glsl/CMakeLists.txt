@@ -34,7 +34,7 @@ add_executable(${PROJECT_NAME}
 )
 
 # Include directories
- target_include_directories(${PROJECT_NAME} PRIVATE 
+target_include_directories(${PROJECT_NAME} PRIVATE 
     ${CMAKE_SOURCE_DIR}/lib/flgl/inc
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glad/include
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glfw/include
@@ -43,9 +43,9 @@ add_executable(${PROJECT_NAME}
     ${OPENGL_INCLUDE_DIRS}
 )   
 
-# Link libraries
+# Link libraries - FIXED: Changed flgl to FLGL
 target_link_libraries(${PROJECT_NAME} PRIVATE 
-    flgl
+    FLGL
     ${OPENGL_LIBRARIES}
 )
 
@@ -117,4 +117,3 @@ add_dependencies(${PROJECT_NAME} copy_shaders)
 # Installation rules (optional)
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 install(DIRECTORY shaders/ DESTINATION bin/shaders)
-

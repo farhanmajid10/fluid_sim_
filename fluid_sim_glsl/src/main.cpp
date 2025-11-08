@@ -3,10 +3,12 @@
 #include <flgl/tools.h>
 #include <flgl/geometry.h>
 #include <flgl/allocators.h>
+#include <shader_helper.h>
 #include <vector>
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <string>
 
 // Simulation parameters
 constexpr int NX = 380;
@@ -68,27 +70,6 @@ private:
         0, 2, 3
     };
 
-    // Helper to set uniforms using raw OpenGL
-    void setUniform1i(Shader& shader, const char* name, int value) {
-        GLint loc = glGetUniformLocation(shader.program, name);
-        if (loc >= 0) glUniform1i(loc, value);
-    }
-    
-    void setUniform1f(Shader& shader, const char* name, float value) {
-        GLint loc = glGetUniformLocation(shader.program, name);
-        if (loc >= 0) glUniform1f(loc, value);
-    }
-    
-    void setUniform2f(Shader& shader, const char* name, float v1, float v2) {
-        GLint loc = glGetUniformLocation(shader.program, name);
-        if (loc >= 0) glUniform2f(loc, v1, v2);
-    }
-    
-    void setUniform1fv(Shader& shader, const char* name, int count, const float* values) {
-        GLint loc = glGetUniformLocation(shader.program, name);
-        if (loc >= 0) glUniform1fv(loc, count, values);
-    }
-
 public:
     void initialize() {
         // Store window handle
@@ -97,10 +78,10 @@ public:
         // Create screen quad mesh
         screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices);
         
-        // Set shader path
+        // Set shader path FIRST (this tells FLGL where to look)
         glconfig.set_shader_path("./shaders/");
-        
-        // Load all shaders
+
+        // Load all shaders (name only, no path, no extension)
         initShader.create("lbm_init", "lbm_init");
         collisionShader.create("lbm_collision", "lbm_collision");
         streamingShader.create("lbm_streaming", "lbm_streaming");
@@ -177,11 +158,13 @@ public:
         glBindFramebuffer(GL_FRAMEBUFFER, fbo[0]);
         
         initShader.bind();
-        setUniform1f(initShader, "tau", TAU);
+        ShaderHelper::setUniform1f("tau", TAU);
         
-        float weights[9];
-        for (int i = 0; i < 9; i++) weights[i] = WEIGHTS[i];
-        setUniform1fv(initShader, "weights", 9, weights);
+        // Set array uniforms individually
+        for (int i = 0; i < 9; i++) {
+            std::string name = "weights[" + std::to_string(i) + "]";
+            ShaderHelper::setUniform1f(name.c_str(), WEIGHTS[i]);
+        }
         
         gl.draw_mesh(screenQuad);
         
@@ -201,14 +184,14 @@ public:
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[src][0]);
-        setUniform1i(collisionShader, "distTex0", 0);
+        ShaderHelper::setUniform1i("distTex0", 0);
         
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[src][1]);
-        setUniform1i(collisionShader, "distTex1", 1);
+        ShaderHelper::setUniform1i("distTex1", 1);
         
-        setUniform1f(collisionShader, "tau", TAU);
-        setUniform2f(collisionShader, "gridSize", float(NX), float(NY));
+        ShaderHelper::setUniform1f("tau", TAU);
+        ShaderHelper::setUniform2f("gridSize", float(NX), float(NY));
         
         gl.draw_mesh(screenQuad);
     }
@@ -224,13 +207,13 @@ public:
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[src][0]);
-        setUniform1i(streamingShader, "distTex0", 0);
+        ShaderHelper::setUniform1i("distTex0", 0);
         
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[src][1]);
-        setUniform1i(streamingShader, "distTex1", 1);
+        ShaderHelper::setUniform1i("distTex1", 1);
         
-        setUniform2f(streamingShader, "gridSize", float(NX), float(NY));
+        ShaderHelper::setUniform2f("gridSize", float(NX), float(NY));
         
         gl.draw_mesh(screenQuad);
         
@@ -247,14 +230,14 @@ public:
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[current][0]);
-        setUniform1i(boundaryShader, "distTex0", 0);
+        ShaderHelper::setUniform1i("distTex0", 0);
         
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[current][1]);
-        setUniform1i(boundaryShader, "distTex1", 1);
+        ShaderHelper::setUniform1i("distTex1", 1);
         
-        setUniform2f(boundaryShader, "gridSize", float(NX), float(NY));
-        setUniform1f(boundaryShader, "wallDamping", 0.7f);
+        ShaderHelper::setUniform2f("gridSize", float(NX), float(NY));
+        ShaderHelper::setUniform1f("wallDamping", 0.7f);
         
         gl.draw_mesh(screenQuad);
     }
@@ -271,25 +254,25 @@ public:
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[current][0]);
-        setUniform1i(mouseShader, "distTex0", 0);
+        ShaderHelper::setUniform1i("distTex0", 0);
         
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[current][1]);
-        setUniform1i(mouseShader, "distTex1", 1);
+        ShaderHelper::setUniform1i("distTex1", 1);
         
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, densityTexture);
-        setUniform1i(mouseShader, "densityTex", 2);
+        ShaderHelper::setUniform1i("densityTex", 2);
         
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
-        setUniform1i(mouseShader, "velocityTex", 3);
+        ShaderHelper::setUniform1i("velocityTex", 3);
         
-        setUniform2f(mouseShader, "mousePos", mouseX, mouseY);
-        setUniform2f(mouseShader, "prevMousePos", prevMouseX, prevMouseY);
-        setUniform1f(mouseShader, "forceStrength", 0.1f);
-        setUniform1f(mouseShader, "forceRadius", 30.0f);
-        setUniform2f(mouseShader, "gridSize", float(NX), float(NY));
+        ShaderHelper::setUniform2f("mousePos", mouseX, mouseY);
+        ShaderHelper::setUniform2f("prevMousePos", prevMouseX, prevMouseY);
+        ShaderHelper::setUniform1f("forceStrength", 0.1f);
+        ShaderHelper::setUniform1f("forceRadius", 30.0f);
+        ShaderHelper::setUniform2f("gridSize", float(NX), float(NY));
         
         gl.draw_mesh(screenQuad);
     }
@@ -304,11 +287,11 @@ public:
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[current][0]);
-        setUniform1i(macroscopicShader, "distTex0", 0);
+        ShaderHelper::setUniform1i("distTex0", 0);
         
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, distributionTextures[current][1]);
-        setUniform1i(macroscopicShader, "distTex1", 1);
+        ShaderHelper::setUniform1i("distTex1", 1);
         
         gl.draw_mesh(screenQuad);
     }
@@ -321,14 +304,14 @@ public:
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, densityTexture);
-        setUniform1i(visualizationShader, "densityTex", 0);
+        ShaderHelper::setUniform1i("densityTex", 0);
         
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
-        setUniform1i(visualizationShader, "velocityTex", 1);
+        ShaderHelper::setUniform1i("velocityTex", 1);
         
-        setUniform2f(visualizationShader, "screenSize", float(window.width), float(window.height));
-        setUniform2f(visualizationShader, "gridSize", float(NX), float(NY));
+        ShaderHelper::setUniform2f("screenSize", float(window.width), float(window.height));
+        ShaderHelper::setUniform2f("gridSize", float(NX), float(NY));
         
         gl.draw_mesh(screenQuad);
     }
