@@ -1,0 +1,2 @@
+[submodule "src/tools/ecs"]
+	url = https://github.com/collebrusco/entity-mini
