@@ -1,3 +1,9 @@
 [submodule "fluid_sim_glsl/lib/flgl"]
 	path = fluid_sim_glsl/lib/flgl
 	url = https://github.com/collebrusco/flgl.git/
+[submodule "fluid_sim_incremental/lib/flgl"]
+	path = fluid_sim_incremental/lib/flgl
+	url = https://github.com/collebrusco/flgl
+[submodule "fluid_sim_incremental/lib/flgl2"]
+	path = fluid_sim_incremental/lib/flgl2
+	url = https://github.com/collebrusco/flgl.git
