@@ -1,42 +1,53 @@
 #include <flgl.h>
 #include <flgl/tools.h>
 #include <flgl/geometry.h>
-#include <iostream>
 #include <shader_helper.h>
+#include <iostream>
 #include <cmath>
 #include <vector>
+#include <iomanip>
 
-class IncrementalLBM{
+class IncrementalLBM {
 private:
+    // Mesh for rendering
     Mesh<Vt_2Dclassic> screenQuad;
+    
+    // Shaders
     Shader initShader;
     Shader macroscopicShader;
     Shader displayShader;
-
-    GLuint distTextures[2][3];
-
+    
+    // LBM Distribution textures (9 distributions in 3 textures)
+    GLuint distTextures[2][3];  // [ping-pong][texture index]
+    
+    // Macroscopic quantities
     GLuint densityTexture;
     GLuint velocityTexture;
-
-    GLuint distFBO[2];
-    GLuint macroFBO;
-
-    bool pingPong = false; //which texture is current.
-
+    
+    // Framebuffers
+    GLuint distFBO[2];  // For distributions
+    GLuint macroFBO;     // For macroscopic quantities
+    
+    // State
+    bool pingPong = false;
+    
+    // Grid size
     static constexpr int NX = 256;
     static constexpr int NY = 256;
-
+    
+    // LBM parameters
     static constexpr float TAU = 1.0f;
-
+    
+    // Debug mode
+    bool debugMode = true;
+    int frameCount = 0;
+    
+    // D2Q9 weights
     const float weights[9] = {
         1.0f/36.0f, 1.0f/9.0f, 1.0f/36.0f,
         1.0f/9.0f, 4.0f/9.0f, 1.0f/9.0f,
         1.0f/36.0f, 1.0f/9.0f, 1.0f/36.0f
     };
-
-    // D2Q9 lattice velocities
-    const int ex[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
-    const int ey[9] = { 1, 1, 1,  0, 0, 0, -1,-1,-1};
     
     // Quad vertices
     std::vector<Vt_2Dclassic> quadVertices = {
@@ -45,54 +56,89 @@ private:
         {{ 1.0f, -1.0f}, {1.0f, 0.0f}},
         {{ 1.0f,  1.0f}, {1.0f, 1.0f}}
     };
-
+    
     std::vector<uint32_t> quadIndices = {0, 1, 2, 0, 2, 3};
 
+    void checkGLError(const char* where) {
+        GLenum err;
+        bool hasError = false;
+        while ((err = glGetError()) != GL_NO_ERROR) {
+            std::cerr << "OpenGL error at " << where << ": 0x" << std::hex << err << std::dec;
+            switch(err) {
+                case GL_INVALID_ENUM: std::cerr << " (INVALID_ENUM)"; break;
+                case GL_INVALID_VALUE: std::cerr << " (INVALID_VALUE)"; break;
+                case GL_INVALID_OPERATION: std::cerr << " (INVALID_OPERATION)"; break;
+                case GL_INVALID_FRAMEBUFFER_OPERATION: std::cerr << " (INVALID_FRAMEBUFFER_OPERATION)"; break;
+                case GL_OUT_OF_MEMORY: std::cerr << " (OUT_OF_MEMORY)"; break;
+            }
+            std::cerr << std::endl;
+            hasError = true;
+        }
+        if (!hasError && debugMode && frameCount < 3) {
+            std::cout << "[OK] No GL errors at: " << where << std::endl;
+        }
+    }
+
 public:
-    void initialize(){
-        std::cout << "=== Step 3: LBM Distribution Functions ===" << std::endl;
+    void initialize() {
+        std::cout << "\n=== Step 3: LBM Distribution Functions ===" << std::endl;
+        std::cout << "Grid size: " << NX << "x" << NY << std::endl;
+        std::cout << "Debug mode: " << (debugMode ? "ON" : "OFF") << std::endl;
         
         // Create screen quad
         screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices);
-        std::cout << "Screen quad created" << std::endl;
+        std::cout << "1. Screen quad created" << std::endl;
+        checkGLError("after screen quad");
         
         // Create textures
         createDistributionTextures();
+        std::cout << "2. Distribution textures created" << std::endl;
+        checkGLError("after distribution textures");
+        
         createMacroscopicTextures();
-        std::cout << "Textures created" << std::endl;
+        std::cout << "3. Macroscopic textures created" << std::endl;
+        checkGLError("after macroscopic textures");
         
         // Create framebuffers
         createFramebuffers();
-        std::cout << "Framebuffers created" << std::endl;
+        std::cout << "4. Framebuffers created" << std::endl;
+        checkGLError("after framebuffers");
         
         // Load shaders
         initShader.create("lbm_init3", "lbm_init3_frag");
         macroscopicShader.create("lbm_macro3", "lbm_macro3_frag");
         displayShader.create("display3", "display3_frag");
-        std::cout << "Shaders loaded" << std::endl;
+        std::cout << "5. Shaders loaded" << std::endl;
+        checkGLError("after shaders");
         
-        // Initialize distributions to equilibrium
+        // Initialize distributions
         initializeLBM();
-        std::cout << "LBM initialized" << std::endl;
+        std::cout << "6. LBM initialized" << std::endl;
+        checkGLError("after LBM init");
         
         // Compute initial macroscopic quantities
         computeMacroscopic();
-        std::cout << "Initial macroscopic quantities computed" << std::endl;
+        std::cout << "7. Initial macroscopic quantities computed" << std::endl;
+        checkGLError("after initial macro");
         
-        std::cout << "Initialization complete!" << std::endl;
+        // Debug: Check initial values
+        debugCheckValues();
+        
+        std::cout << "=== Initialization Complete! ===\n" << std::endl;
     }
+    
     void createDistributionTextures() {
-        for (int p = 0; p < 2; p++) {  // ping-pong buffers
-            for (int i = 0; i < 3; i++) {  // 3 textures for 9 distributions
+        for (int p = 0; p < 2; p++) {
+            for (int i = 0; i < 3; i++) {
                 glGenTextures(1, &distTextures[p][i]);
                 glBindTexture(GL_TEXTURE_2D, distTextures[p][i]);
                 
                 if (i < 2) {
-                    // First two textures store 4 distributions each (RGBA)
+                    // RGBA textures for distributions 0-3 and 4-7
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, NX, NY, 0, 
                                GL_RGBA, GL_FLOAT, nullptr);
                 } else {
-                    // Third texture stores just f8 (R channel)
+                    // R texture for distribution 8
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, 
                                GL_RED, GL_FLOAT, nullptr);
                 }
@@ -101,6 +147,11 @@ public:
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                
+                if (debugMode) {
+                    std::cout << "  Created dist texture[" << p << "][" << i 
+                             << "] ID=" << distTextures[p][i] << std::endl;
+                }
             }
         }
     }
@@ -109,13 +160,27 @@ public:
         // Density texture
         glGenTextures(1, &densityTexture);
         glBindTexture(GL_TEXTURE_2D, densityTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, nullptr);
+        
+        // Initialize with test pattern
+        float* testDensity = new float[NX * NY];
+        for (int y = 0; y < NY; y++) {
+            for (int x = 0; x < NX; x++) {
+                // Gradient pattern for testing
+                testDensity[y * NX + x] = 1.0f + 0.1f * float(x) / float(NX);
+            }
+        }
+        
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, testDensity);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         
-        // Velocity texture (2 components)
+        delete[] testDensity;
+        
+        std::cout << "  Created density texture ID=" << densityTexture << std::endl;
+        
+        // Velocity texture
         glGenTextures(1, &velocityTexture);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, NX, NY, 0, GL_RG, GL_FLOAT, nullptr);
@@ -123,15 +188,16 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        
+        std::cout << "  Created velocity texture ID=" << velocityTexture << std::endl;
     }
     
     void createFramebuffers() {
-        // Framebuffers for distributions
+        // Distribution framebuffers
         for (int i = 0; i < 2; i++) {
             glGenFramebuffers(1, &distFBO[i]);
             glBindFramebuffer(GL_FRAMEBUFFER, distFBO[i]);
             
-            // Attach all 3 distribution textures
             GLenum drawBuffers[3] = {
                 GL_COLOR_ATTACHMENT0,
                 GL_COLOR_ATTACHMENT1,
@@ -145,12 +211,16 @@ public:
             
             glDrawBuffers(3, drawBuffers);
             
-            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-                std::cerr << "Distribution framebuffer " << i << " incomplete!" << std::endl;
+            GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                std::cerr << "ERROR: Distribution framebuffer " << i 
+                         << " incomplete! Status: 0x" << std::hex << status << std::dec << std::endl;
+            } else {
+                std::cout << "  Distribution FBO " << i << " complete" << std::endl;
             }
         }
         
-        // Framebuffer for macroscopic quantities
+        // Macroscopic framebuffer
         glGenFramebuffers(1, &macroFBO);
         glBindFramebuffer(GL_FRAMEBUFFER, macroFBO);
         
@@ -162,21 +232,36 @@ public:
         GLenum macroBuffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
         glDrawBuffers(2, macroBuffers);
         
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            std::cerr << "Macroscopic framebuffer incomplete!" << std::endl;
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "ERROR: Macroscopic framebuffer incomplete! Status: 0x" 
+                     << std::hex << status << std::dec << std::endl;
+        } else {
+            std::cout << "  Macroscopic FBO complete" << std::endl;
         }
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     
     void initializeLBM() {
-        // Set viewport for texture operations
+        std::cout << "  Initializing LBM distributions..." << std::endl;
+        
+        // Clear distributions first
+        for (int i = 0; i < 2; i++) {
+            glBindFramebuffer(GL_FRAMEBUFFER, distFBO[i]);
+            float clearColor[] = {0.1f, 0.1f, 0.1f, 0.1f};
+            glClearBufferfv(GL_COLOR, 0, clearColor);
+            glClearBufferfv(GL_COLOR, 1, clearColor);
+            float clearRed[] = {0.1f, 0.0f, 0.0f, 0.0f};
+            glClearBufferfv(GL_COLOR, 2, clearRed);
+        }
+        
+        // Run initialization shader
         glViewport(0, 0, NX, NY);
         glBindFramebuffer(GL_FRAMEBUFFER, distFBO[0]);
         
         initShader.bind();
         ShaderHelper::setUniform1f("tau", TAU);
-        ShaderHelper::setUniform2f("gridSize", float(NX), float(NY));
         
         gl.draw_mesh(screenQuad);
         
@@ -186,12 +271,13 @@ public:
         glBlitFramebuffer(0, 0, NX, NY, 0, 0, NX, NY, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        
+        std::cout << "  LBM initialization complete" << std::endl;
     }
     
     void computeMacroscopic() {
         int current = pingPong ? 1 : 0;
         
-        // Set viewport for texture operations
         glViewport(0, 0, NX, NY);
         glBindFramebuffer(GL_FRAMEBUFFER, macroFBO);
         
@@ -212,28 +298,52 @@ public:
         gl.draw_mesh(screenQuad);
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        
-        glFinish();  // Make sure GPU is done
+    }
     
-    // Read a density value from the center
-    float centerDensity;
-    glBindTexture(GL_TEXTURE_2D, densityTexture);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, &centerDensity);
-    
-    // Only print first few frames
-    static int debugCount = 0;
-    if (debugCount++ < 5) {
-        std::cout << "Frame " << debugCount << " - Center density: " << centerDensity << std::endl;
+    void debugCheckValues() {
+        if (!debugMode || frameCount > 5) return;
         
-        // Also check what the sum of weights is
-        float weightSum = 1.0f/36.0f * 4 + 1.0f/9.0f * 4 + 4.0f/9.0f;
-        std::cout << "  Weight sum should be 1.0, is: " << weightSum << std::endl;
-    }   
-
+        std::cout << "\n--- Debug Check (Frame " << frameCount << ") ---" << std::endl;
+        
+        // Read back some density values
+        glBindFramebuffer(GL_FRAMEBUFFER, macroFBO);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        
+        float densityValues[9];
+        glReadPixels(NX/2-1, NY/2-1, 3, 3, GL_RED, GL_FLOAT, densityValues);
+        
+        std::cout << "Density values (3x3 center):" << std::endl;
+        for (int y = 2; y >= 0; y--) {
+            for (int x = 0; x < 3; x++) {
+                std::cout << std::fixed << std::setprecision(3) 
+                         << densityValues[y*3 + x] << " ";
+            }
+            std::cout << std::endl;
+        }
+        
+        // Check for issues
+        float sum = 0.0f;
+        bool hasNaN = false;
+        bool hasNegative = false;
+        bool hasHuge = false;
+        
+        for (int i = 0; i < 9; i++) {
+            sum += densityValues[i];
+            if (std::isnan(densityValues[i])) hasNaN = true;
+            if (densityValues[i] < 0.0f) hasNegative = true;
+            if (densityValues[i] > 100.0f) hasHuge = true;
+        }
+        
+        std::cout << "Average density: " << sum/9.0f << std::endl;
+        if (hasNaN) std::cout << "WARNING: NaN detected!" << std::endl;
+        if (hasNegative) std::cout << "WARNING: Negative density!" << std::endl;
+        if (hasHuge) std::cout << "WARNING: Huge values!" << std::endl;
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     
     void render() {
-        // CRITICAL FIX: Reset viewport to window size for screen rendering!
+        // CRITICAL: Reset viewport for window rendering
         glViewport(0, 0, window.width, window.height);
         
         displayShader.bind();
@@ -247,11 +357,17 @@ public:
         ShaderHelper::setUniform1i("velocityTex", 1);
         
         gl.draw_mesh(screenQuad);
+        
+        checkGLError("after render");
     }
     
     void update() {
-        // For now, just recompute macroscopic quantities each frame
+        frameCount++;
         computeMacroscopic();
+        
+        if (debugMode && frameCount <= 5) {
+            debugCheckValues();
+        }
     }
     
     void cleanup() {
@@ -267,12 +383,12 @@ public:
 
 int main() {
     gl.init();
-    window.create("Step 3: LBM Initialization", 800, 800);
+    window.create("Step 3: LBM Debug", 800, 800);
     
     IncrementalLBM sim;
     sim.initialize();
     
-    gl.set_clear_color(0.0f, 0.0f, 0.0f, 1.0f);
+    gl.set_clear_color(0.1f, 0.1f, 0.1f, 1.0f);
     
     while (!window.should_close()) {
         gl.clear(GL_COLOR_BUFFER_BIT);
