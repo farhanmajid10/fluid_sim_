@@ -15,11 +15,9 @@ private:
     // Shaders
     Shader initShader;
     Shader collisionShader;
-    Shader streamingShader;
-    Shader boundaryShader;
+    Shader streamingShader;  // ADD THIS
     Shader macroscopicShader;
     Shader displayShader;
-    Shader dropShader;
     
     // LBM Distribution textures (9 distributions in 3 textures)
     GLuint distTextures[2][3];  // [ping-pong][texture index]
@@ -39,18 +37,12 @@ private:
     static constexpr int NX = 256;
     static constexpr int NY = 256;
     
-    // LBM parameters - TUNED FOR STABILITY
-    static constexpr float TAU = 0.8f;  // Relaxation time
+    // LBM parameters
+    static constexpr float TAU = 1.0f;  // Changed back to 1.0 for stability
     
     // Debug mode
     bool debugMode = true;
     int frameCount = 0;
-    
-    // Mouse interaction
-    float mouseX = -1.0f;
-    float mouseY = -1.0f;
-    bool mousePressed = false;
-    GLFWwindow* windowHandle = nullptr;
     
     // Quad vertices
     std::vector<Vt_2Dclassic> quadVertices = {
@@ -62,53 +54,54 @@ private:
     
     std::vector<uint32_t> quadIndices = {0, 1, 2, 0, 2, 3};
 
+    void checkGLError(const char* where) {
+        GLenum err;
+        bool hasError = false;
+        while ((err = glGetError()) != GL_NO_ERROR) {
+            std::cerr << "OpenGL error at " << where << ": 0x" << std::hex << err << std::dec << std::endl;
+            hasError = true;
+        }
+        if (!hasError && debugMode && frameCount < 3) {
+            std::cout << "[OK] No GL errors at: " << where << std::endl;
+        }
+    }
+
 public:
     void initialize() {
-        std::cout << "\n=== Step 5: Stable LBM with Ripples ===" << std::endl;
-        std::cout << "Grid: " << NX << "x" << NY << std::endl;
+        std::cout << "\n=== Step 4: LBM with Collision & Streaming ===" << std::endl;
+        std::cout << "Grid size: " << NX << "x" << NY << std::endl;
         std::cout << "Tau: " << TAU << std::endl;
-        std::cout << "Click to create ripples!" << std::endl;
-        std::cout << "=======================================\n" << std::endl;
-        
-        // Store window handle for mouse input
-        windowHandle = glfwGetCurrentContext();
         
         // Create screen quad
         screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices);
-        std::cout << "✓ Screen quad created" << std::endl;
+        std::cout << "1. Screen quad created" << std::endl;
         
         // Create textures
         createDistributionTextures();
         createMacroscopicTextures();
-        std::cout << "✓ Textures created" << std::endl;
+        std::cout << "2. Textures created" << std::endl;
         
         // Create framebuffers
         createFramebuffers();
-        std::cout << "✓ Framebuffers created" << std::endl;
+        std::cout << "3. Framebuffers created" << std::endl;
         
         // Load shaders
-        loadShaders();
-        std::cout << "✓ Shaders loaded" << std::endl;
+        initShader.create("lbm_init4", "lbm_init4_frag");
+        collisionShader.create("lbm_collision4", "lbm_collision4_frag");
+        streamingShader.create("lbm_streaming4", "lbm_streaming4_frag");  // ADD THIS
+        macroscopicShader.create("lbm_macro4", "lbm_macro4_frag");
+        displayShader.create("display4", "display4_frag");
+        std::cout << "4. Shaders loaded" << std::endl;
         
         // Initialize distributions
         initializeLBM();
-        std::cout << "✓ LBM initialized" << std::endl;
+        std::cout << "5. LBM initialized" << std::endl;
         
         // Compute initial macroscopic quantities
         computeMacroscopic();
-        std::cout << "✓ Initial state computed" << std::endl;
+        debugCheckValues();
         
-        std::cout << "\n=== Ready! Click to add ripples ===\n" << std::endl;
-    }
-    
-    void loadShaders() {
-        initShader.create("lbm_init5", "lbm_init5_frag");
-        collisionShader.create("lbm_collision5", "lbm_collision5_frag");
-        streamingShader.create("lbm_streaming5", "lbm_streaming5_frag");
-        boundaryShader.create("lbm_boundary5", "lbm_boundary5_frag");
-        dropShader.create("lbm_drop5", "lbm_drop5_frag");
-        macroscopicShader.create("lbm_macro5", "lbm_macro5_frag");
-        displayShader.create("display5", "display5_frag");
+        std::cout << "=== Initialization Complete! ===\n" << std::endl;
     }
     
     void createDistributionTextures() {
@@ -118,11 +111,9 @@ public:
                 glBindTexture(GL_TEXTURE_2D, distTextures[p][i]);
                 
                 if (i < 2) {
-                    // RGBA textures for distributions 0-3 and 4-7
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, NX, NY, 0, 
                                GL_RGBA, GL_FLOAT, nullptr);
                 } else {
-                    // R texture for distribution 8
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, 
                                GL_RED, GL_FLOAT, nullptr);
                 }
@@ -136,27 +127,20 @@ public:
     }
     
     void createMacroscopicTextures() {
-        // Density texture
         glGenTextures(1, &densityTexture);
         glBindTexture(GL_TEXTURE_2D, densityTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         
-        // Velocity texture
         glGenTextures(1, &velocityTexture);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, NX, NY, 0, GL_RG, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     
     void createFramebuffers() {
-        // Distribution framebuffers
         for (int i = 0; i < 2; i++) {
             glGenFramebuffers(1, &distFBO[i]);
             glBindFramebuffer(GL_FRAMEBUFFER, distFBO[i]);
@@ -175,11 +159,10 @@ public:
             glDrawBuffers(3, drawBuffers);
             
             if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-                std::cerr << "ERROR: Distribution framebuffer " << i << " incomplete!" << std::endl;
+                std::cerr << "Distribution framebuffer " << i << " incomplete!" << std::endl;
             }
         }
         
-        // Macroscopic framebuffer
         glGenFramebuffers(1, &macroFBO);
         glBindFramebuffer(GL_FRAMEBUFFER, macroFBO);
         
@@ -233,6 +216,7 @@ public:
         ShaderHelper::setUniform1i("distTex2", 2);
         
         ShaderHelper::setUniform1f("tau", TAU);
+        ShaderHelper::setUniform1f("time", frameCount * 0.01f);
         
         gl.draw_mesh(screenQuad);
         
@@ -240,7 +224,7 @@ public:
         pingPong = !pingPong;
     }
     
-    void runStreamingStep() {
+    void runStreamingStep() {  // ADD THIS FUNCTION
         int src = pingPong ? 0 : 1;
         int dst = pingPong ? 1 : 0;
         
@@ -269,68 +253,6 @@ public:
         pingPong = !pingPong;
     }
     
-    void runBoundaryConditions() {
-        int current = pingPong ? 0 : 1;
-        
-        glViewport(0, 0, NX, NY);
-        glBindFramebuffer(GL_FRAMEBUFFER, distFBO[current]);
-        
-        boundaryShader.bind();
-        
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, distTextures[current][0]);
-        ShaderHelper::setUniform1i("distTex0", 0);
-        
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, distTextures[current][1]);
-        ShaderHelper::setUniform1i("distTex1", 1);
-        
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, distTextures[current][2]);
-        ShaderHelper::setUniform1i("distTex2", 2);
-        
-        ShaderHelper::setUniform2f("gridSize", float(NX), float(NY));
-        
-        gl.draw_mesh(screenQuad);
-        
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-    
-    // In addDropAt() - REMOVE BLENDING!
-void addDropAt(float x, float y) {
-    int current = pingPong ? 0 : 1;
-    
-    glViewport(0, 0, NX, NY);
-    glBindFramebuffer(GL_FRAMEBUFFER, distFBO[current]);
-    
-    // NO BLENDING! Remove these lines:
-    // glEnable(GL_BLEND);
-    // glBlendFunc(GL_ONE, GL_ONE);
-    
-    dropShader.bind();
-    
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, distTextures[current][0]);
-    ShaderHelper::setUniform1i("distTex0", 0);
-    
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, distTextures[current][1]);
-    ShaderHelper::setUniform1i("distTex1", 1);
-    
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, distTextures[current][2]);
-    ShaderHelper::setUniform1i("distTex2", 2);
-    
-    ShaderHelper::setUniform2f("dropPos", x, y);
-    ShaderHelper::setUniform1f("dropStrength", 0.1f);  // Increased but safe
-    ShaderHelper::setUniform1f("dropRadius", 0.05f);
-    
-    gl.draw_mesh(screenQuad);
-    
-    // glDisable(GL_BLEND);  // Remove this too
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-    
     void computeMacroscopic() {
         int current = pingPong ? 0 : 1;
         
@@ -356,27 +278,10 @@ void addDropAt(float x, float y) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     
-    void handleMouseInput() {
-        double mx, my;
-        glfwGetCursorPos(windowHandle, &mx, &my);
+    void debugCheckValues() {
+        if (!debugMode || frameCount > 10) return;
         
-        // Convert to texture coordinates
-        mouseX = float(mx) / window.width;
-        mouseY = 1.0f - float(my) / window.height;  // Flip Y
-        
-        bool wasPressed = mousePressed;
-        mousePressed = (glfwGetMouseButton(windowHandle, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-        
-        // Add drop on click
-        if (mousePressed && !wasPressed) {
-            addDropAt(mouseX, mouseY);
-            std::cout << "Drop at: (" << std::fixed << std::setprecision(2) 
-                     << mouseX << ", " << mouseY << ")" << std::endl;
-        }
-    }
-    
-    void debugCheck() {
-        if (frameCount % 100 != 0) return;
+        std::cout << "\n--- Debug Check (Frame " << frameCount << ") ---" << std::endl;
         
         glBindFramebuffer(GL_FRAMEBUFFER, macroFBO);
         glReadBuffer(GL_COLOR_ATTACHMENT0);
@@ -384,21 +289,15 @@ void addDropAt(float x, float y) {
         float densityValues[9];
         glReadPixels(NX/2-1, NY/2-1, 3, 3, GL_RED, GL_FLOAT, densityValues);
         
-        float sum = 0, minD = densityValues[0], maxD = densityValues[0];
+        std::cout << "Density at center: " << densityValues[4] << std::endl;
+        
+        float min = densityValues[0], max = densityValues[0], sum = 0;
         for (int i = 0; i < 9; i++) {
             sum += densityValues[i];
-            if (densityValues[i] < minD) minD = densityValues[i];
-            if (densityValues[i] > maxD) maxD = densityValues[i];
+            if (densityValues[i] < min) min = densityValues[i];
+            if (densityValues[i] > max) max = densityValues[i];
         }
-        
-        std::cout << "Frame " << frameCount << " - Density: [" 
-                  << std::fixed << std::setprecision(3) << minD << ", " << maxD 
-                  << "], avg=" << sum/9.0f;
-        
-        if (maxD > 1.5 || minD < 0.5) {
-            std::cout << " ⚠️ WARNING: Becoming unstable!";
-        }
-        std::cout << std::endl;
+        std::cout << "Density range: [" << min << ", " << max << "], avg: " << sum/9.0f << std::endl;
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
@@ -422,24 +321,17 @@ void addDropAt(float x, float y) {
     void update() {
         frameCount++;
         
-        handleMouseInput();
-        
-        // Run LBM steps - SINGLE SUBSTEP FOR STABILITY
+        // Run LBM steps (correct order!)
         runCollisionStep();
-        runStreamingStep();
-        runBoundaryConditions();
-        
+        runStreamingStep();  // ADD THIS
         computeMacroscopic();
         
-        // Automatic gentle drops for testing
-        if (frameCount == 60) {  // Single initial drop
-            addDropAt(0.5f, 0.7f);
-            std::cout << "Initial drop added" << std::endl;
+        if (debugMode && frameCount <= 10) {
+            debugCheckValues();
         }
         
-        // Debug check
-        if (debugMode) {
-            debugCheck();
+        if (frameCount % 100 == 0) {
+            std::cout << "Frame " << frameCount << std::endl;
         }
     }
     
@@ -456,12 +348,12 @@ void addDropAt(float x, float y) {
 
 int main() {
     gl.init();
-    window.create("Step 5: Stable LBM Ripples", 800, 800);
+    window.create("Step 4: Fixed LBM", 800, 800);
     
     IncrementalLBM sim;
     sim.initialize();
     
-    gl.set_clear_color(0.0f, 0.0f, 0.0f, 1.0f);
+    gl.set_clear_color(0.1f, 0.1f, 0.1f, 1.0f);
     
     while (!window.should_close()) {
         gl.clear(GL_COLOR_BUFFER_BIT);

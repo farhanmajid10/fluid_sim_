@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
-project(IncrementalLBM_Step5)
+project(IncrementalLBM_Step3)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_BUILD_TYPE Debug)  # Debug for now to get better error info
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -43,16 +44,13 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders)
 
 set(SHADER_NAMES
-    lbm_init5
-    lbm_collision5
-    lbm_streaming5
-    lbm_boundary5
-    lbm_drop5
-    lbm_macro5
-    display5
+    lbm_init3
+    lbm_macro3
+    display3
 )
 
 foreach(SHADER_NAME ${SHADER_NAMES})
@@ -68,7 +66,10 @@ foreach(SHADER_NAME ${SHADER_NAMES})
     )
 endforeach()
 
-add_custom_target(copy_shaders ALL COMMENT "Copying Step 5 shaders")
+add_custom_target(copy_shaders ALL
+    COMMENT "Copying Step 3 shaders"
+)
+
 add_dependencies(${PROJECT_NAME} copy_shaders)
 
-message(STATUS "Step 5: Full LBM with mouse interaction and boundaries")
+message(STATUS "Step 3: LBM Distribution Functions - Debug Build")
