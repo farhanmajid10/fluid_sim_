@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(IncrementalLBM_Step3)
+project(IncrementalLBM_Step2)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -77,11 +77,10 @@ endif()
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders)
 
-# Step 3: Add LBM initialization shaders
+# Step 2: Add advection and display shaders
 set(SHADER_NAMES
-    lbm_init3
-    lbm_macro3
-    display3
+    display
+    advection
 )
 
 # Copy shaders to all possible locations FLGL might check
@@ -113,12 +112,12 @@ endforeach()
 
 # Add custom target for shader copying
 add_custom_target(copy_shaders ALL
-    COMMENT "Copying Step 3 shaders (lbm_init3 + lbm_macro3 + display3)"
+    COMMENT "Copying Step 2 shaders (display + advection)"
 )
 
 # Make executable depend on shader copying
 add_dependencies(${PROJECT_NAME} copy_shaders)
 
 # Print status
-message(STATUS "Step 3: LBM Distribution Functions")
+message(STATUS "Step 2: Velocity field and advection")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
