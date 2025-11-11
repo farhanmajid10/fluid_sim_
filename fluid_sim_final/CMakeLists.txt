@@ -14,8 +14,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glad/include
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glfw/include
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glm
+    ${CMAKE_SOURCE_DIR}/include  # ADD THIS LINE
     ${OPENGL_INCLUDE_DIRS}
-)   
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     FLGL
@@ -32,17 +33,19 @@ if(UNIX AND NOT APPLE)
         Threads::Threads
     )
 endif()
-
-# Copy shaders
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders)
-
-configure_file(
-    ${CMAKE_SOURCE_DIR}/shaders/gradient_test.vert
-    ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/gradient_test.glsl
-    COPYONLY
+set(SHADER_NAMES
+    density_display
 )
-configure_file(
-    ${CMAKE_SOURCE_DIR}/shaders/gradient_test.frag
-    ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/gradient_test_frag.glsl
-    COPYONLY
-)
+
+foreach(SHADER_NAME ${SHADER_NAMES})
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.vert
+        ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}.glsl
+        COPYONLY
+    )
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.frag
+        ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}_frag.glsl
+        COPYONLY
+    )
+endforeach()
