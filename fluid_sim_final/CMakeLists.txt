@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LBM_Complete)
+project(LBM_Interactive)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,13 +33,13 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
-# NO boundary shaders needed!
 set(SHADER_NAMES
-    lbm_init
+    lbm_init_multi
     lbm_collision
     lbm_streaming
+    lbm_force
     lbm_macro
-    lbm_display
+    lbm_water
 )
 
 foreach(SHADER_NAME ${SHADER_NAMES})
@@ -53,4 +53,23 @@ foreach(SHADER_NAME ${SHADER_NAMES})
         ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}_frag.glsl
         COPYONLY
     )
+endforeach()
+
+# Also keep the old shaders
+set(OLD_SHADERS lbm_display)
+foreach(SHADER_NAME ${OLD_SHADERS})
+    if(EXISTS ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.vert)
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.vert
+            ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}.glsl
+            COPYONLY
+        )
+    endif()
+    if(EXISTS ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.frag)
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.frag
+            ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders/${SHADER_NAME}_frag.glsl
+            COPYONLY
+        )
+    endif()
 endforeach()

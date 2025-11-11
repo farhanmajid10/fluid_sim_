@@ -7,14 +7,15 @@
 #include <vector>
 #include <iomanip>
 
-class LBMComplete {
+class LBMInteractive {
 private:
     Mesh<Vt_2Dclassic> screenQuad;
     
     // Shaders
     Shader initShader;
     Shader collisionShader;
-    Shader streamingShader;  // This now includes boundaries
+    Shader streamingShader;
+    Shader forceShader;  // NEW - for mouse forces
     Shader macroscopicShader;
     Shader displayShader;
     
@@ -33,12 +34,20 @@ private:
     bool pingPong = false;
     int frameCount = 0;
     
+    // Mouse state
+    float mouseX = 0.5f;
+    float mouseY = 0.5f;
+    float prevMouseX = 0.5f;
+    float prevMouseY = 0.5f;
+    bool mousePressed = false;
+    bool wasPressed = false;
+    
     // Grid size
     static constexpr int NX = 256;
     static constexpr int NY = 256;
     
     // LBM parameters
-    static constexpr float TAU = 1.0f;  // Increased for stability
+    static constexpr float TAU = 0.55f;
     
     std::vector<Vt_2Dclassic> quadVertices = {
         {{-1.0f,  1.0f}, {0.0f, 1.0f}},
@@ -51,7 +60,7 @@ private:
 
 public:
     void initialize() {
-        std::cout << "=== LBM with Integrated Boundaries ===" << std::endl;
+        std::cout << "=== LBM Interactive Fluid Simulation ===" << std::endl;
         std::cout << "Grid: " << NX << "x" << NY << std::endl;
         std::cout << "Tau: " << TAU << std::endl;
         
@@ -68,21 +77,22 @@ public:
         std::cout << "✓ Framebuffers created" << std::endl;
         
         // Load shaders
-        initShader.create("lbm_init", "lbm_init_frag");
+        initShader.create("lbm_init_multi", "lbm_init_multi_frag");
         collisionShader.create("lbm_collision", "lbm_collision_frag");
         streamingShader.create("lbm_streaming", "lbm_streaming_frag");
+        forceShader.create("lbm_force", "lbm_force_frag");
         macroscopicShader.create("lbm_macro", "lbm_macro_frag");
-        displayShader.create("lbm_display", "lbm_display_frag");
+        displayShader.create("lbm_water", "lbm_water_frag");
         std::cout << "✓ Shaders loaded" << std::endl;
         
         initializeLBM();
         std::cout << "✓ LBM initialized" << std::endl;
         
         computeMacroscopic();
-        checkValues();
         
-        std::cout << "\nFluid with stable boundaries!" << std::endl;
-        std::cout << "✓ Initialization complete!\n" << std::endl;
+        std::cout << "\n=== INTERACTIVE FLUID ===" << std::endl;
+        std::cout << "CLICK and DRAG to create disturbances!" << std::endl;
+        std::cout << "✓ Ready!\n" << std::endl;
     }
     
     void createDistributionTextures() {
@@ -172,6 +182,65 @@ public:
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     
+    void handleMouse() {
+        // Get mouse state
+        double mx, my;
+        glfwGetCursorPos(glfwGetCurrentContext(), &mx, &my);
+        
+        // Convert to normalized coordinates [0,1]
+        mouseX = float(mx) / float(window.width);
+        mouseY = 1.0f - float(my) / float(window.height);  // Flip Y
+        
+        mousePressed = glfwGetMouseButton(glfwGetCurrentContext(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        
+        // Reset previous position if just started pressing
+        if (mousePressed && !wasPressed) {
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+        }
+        
+        wasPressed = mousePressed;
+    }
+    
+    void applyForce() {
+        if (!mousePressed) return;
+        
+        int src = pingPong ? 1 : 0;
+        int dst = pingPong ? 0 : 1;
+        
+        glViewport(0, 0, NX, NY);
+        glBindFramebuffer(GL_FRAMEBUFFER, distFBO[dst]);
+        
+        forceShader.bind();
+        
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, distTextures[src][0]);
+        ShaderHelper::setUniform1i("distTex0", 0);
+        
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, distTextures[src][1]);
+        ShaderHelper::setUniform1i("distTex1", 1);
+        
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, distTextures[src][2]);
+        ShaderHelper::setUniform1i("distTex2", 2);
+        
+        ShaderHelper::setUniform2f("mousePos", mouseX, mouseY);
+        ShaderHelper::setUniform2f("mouseVel", 
+            (mouseX - prevMouseX) * 100.0f, 
+            (mouseY - prevMouseY) * 100.0f);
+        ShaderHelper::setUniform1f("forceRadius", 0.05f);
+        ShaderHelper::setUniform1f("forceStrength", 0.3f);
+        
+        gl.draw_mesh(screenQuad);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        pingPong = !pingPong;
+        
+        prevMouseX = mouseX;
+        prevMouseY = mouseY;
+    }
+    
     void runCollision() {
         int src = pingPong ? 1 : 0;
         int dst = pingPong ? 0 : 1;
@@ -255,36 +324,6 @@ public:
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     
-    void checkValues() {
-        glBindFramebuffer(GL_FRAMEBUFFER, macroFBO);
-        glReadBuffer(GL_COLOR_ATTACHMENT0);
-        
-        float density[9];
-        glReadPixels(NX/2-1, NY/2-1, 3, 3, GL_RED, GL_FLOAT, density);
-        
-        float sum = 0, min = density[0], max = density[0];
-        bool hasNaN = false;
-        for (int i = 0; i < 9; i++) {
-            if (std::isnan(density[i])) {
-                hasNaN = true;
-                break;
-            }
-            sum += density[i];
-            min = std::min(min, density[i]);
-            max = std::max(max, density[i]);
-        }
-        
-        if (hasNaN) {
-            std::cout << "WARNING: NaN detected!" << std::endl;
-        } else {
-            std::cout << "Density - Center: " << density[4] 
-                      << ", Range: [" << min << ", " << max 
-                      << "], Avg: " << sum/9.0f << std::endl;
-        }
-        
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-    
     void render() {
         glViewport(0, 0, window.width, window.height);
         
@@ -304,15 +343,15 @@ public:
     void update() {
         frameCount++;
         
+        handleMouse();
+        
+        // Apply mouse force if dragging
+        applyForce();
+        
         // LBM steps
         runCollision();
-        runStreamingWithBoundaries();  // Combined!
+        runStreamingWithBoundaries();
         computeMacroscopic();
-        
-        if (frameCount % 100 == 0) {
-            std::cout << "Frame " << frameCount << " - ";
-            checkValues();
-        }
     }
     
     void cleanup() {
@@ -328,12 +367,12 @@ public:
 
 int main() {
     gl.init();
-    window.create("LBM Complete - Fixed", 800, 800);
+    window.create("LBM Water Simulation - Click & Drag!", 800, 800);
     
-    LBMComplete sim;
+    LBMInteractive sim;
     sim.initialize();
     
-    gl.set_clear_color(0.1f, 0.1f, 0.1f, 1.0f);
+    gl.set_clear_color(0.02f, 0.05f, 0.1f, 1.0f);  // Dark blue background
     
     while (!window.should_close()) {
         sim.update();
