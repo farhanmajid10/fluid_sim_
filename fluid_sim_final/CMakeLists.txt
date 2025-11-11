@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LBM_Step3_1)
+project(LBM_Complete)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +33,7 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
+# NO boundary shaders needed!
 set(SHADER_NAMES
     lbm_init
     lbm_collision

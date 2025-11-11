@@ -17,8 +17,11 @@ const ivec2 e[9] = ivec2[9](
     ivec2(-1,-1), ivec2(0,-1), ivec2(1,-1)
 );
 
+// Opposite directions for bounce-back
+const int opp[9] = int[9](8, 7, 6, 5, 4, 3, 2, 1, 0);
+
 float fetchDist(int i, vec2 coord) {
-    // Clamp coordinates to texture boundaries
+    // Clamp to texture boundaries
     coord = clamp(coord, vec2(0.0), vec2(1.0));
     
     if (i < 4) {
@@ -40,18 +43,34 @@ float fetchDist(int i, vec2 coord) {
 
 void main() {
     vec2 texelSize = 1.0 / gridSize;
+    vec2 pixel = texCoord * gridSize;
     
-    // Stream: pull distributions from neighbors
-    // Each distribution comes from the opposite direction
-    distOut0.x = fetchDist(0, texCoord - vec2(e[0]) * texelSize);
-    distOut0.y = fetchDist(1, texCoord - vec2(e[1]) * texelSize);
-    distOut0.z = fetchDist(2, texCoord - vec2(e[2]) * texelSize);
-    distOut0.w = fetchDist(3, texCoord - vec2(e[3]) * texelSize);
-    
-    distOut1.x = fetchDist(4, texCoord - vec2(e[4]) * texelSize);
-    distOut1.y = fetchDist(5, texCoord - vec2(e[5]) * texelSize);
-    distOut1.z = fetchDist(6, texCoord - vec2(e[6]) * texelSize);
-    distOut1.w = fetchDist(7, texCoord - vec2(e[7]) * texelSize);
-    
-    distOut2 = fetchDist(8, texCoord - vec2(e[8]) * texelSize);
+    // Stream each distribution
+    for (int i = 0; i < 9; i++) {
+        vec2 sourceCoord = texCoord - vec2(e[i]) * texelSize;
+        vec2 sourcePixel = sourceCoord * gridSize;
+        
+        float value;
+        
+        // Check if source is outside boundaries
+        if (sourcePixel.x < 0.5 || sourcePixel.x > gridSize.x - 0.5 ||
+            sourcePixel.y < 0.5 || sourcePixel.y > gridSize.y - 0.5) {
+            // Bounce-back: take opposite direction from current cell
+            value = fetchDist(opp[i], texCoord);
+        } else {
+            // Normal streaming
+            value = fetchDist(i, sourceCoord);
+        }
+        
+        // Store in appropriate output
+        if (i == 0) distOut0.x = value;
+        else if (i == 1) distOut0.y = value;
+        else if (i == 2) distOut0.z = value;
+        else if (i == 3) distOut0.w = value;
+        else if (i == 4) distOut1.x = value;
+        else if (i == 5) distOut1.y = value;
+        else if (i == 6) distOut1.z = value;
+        else if (i == 7) distOut1.w = value;
+        else distOut2 = value;
+    }
 }

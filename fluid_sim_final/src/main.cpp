@@ -7,14 +7,14 @@
 #include <vector>
 #include <iomanip>
 
-class LBMStreamingTest {
+class LBMComplete {
 private:
     Mesh<Vt_2Dclassic> screenQuad;
     
     // Shaders
     Shader initShader;
     Shader collisionShader;
-    Shader streamingShader;  // NEW!
+    Shader streamingShader;  // This now includes boundaries
     Shader macroscopicShader;
     Shader displayShader;
     
@@ -38,7 +38,7 @@ private:
     static constexpr int NY = 256;
     
     // LBM parameters
-    static constexpr float TAU = 0.6f;
+    static constexpr float TAU = 1.0f;  // Increased for stability
     
     std::vector<Vt_2Dclassic> quadVertices = {
         {{-1.0f,  1.0f}, {0.0f, 1.0f}},
@@ -51,42 +51,37 @@ private:
 
 public:
     void initialize() {
-        std::cout << "=== Step 3.1: LBM Streaming Test ===" << std::endl;
+        std::cout << "=== LBM with Integrated Boundaries ===" << std::endl;
         std::cout << "Grid: " << NX << "x" << NY << std::endl;
         std::cout << "Tau: " << TAU << std::endl;
         
-        // Create mesh
         screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices);
         std::cout << "✓ Quad created" << std::endl;
         
-        // Create textures
         createDistributionTextures();
         std::cout << "✓ Distribution textures created" << std::endl;
         
         createMacroscopicTextures();
         std::cout << "✓ Macroscopic textures created" << std::endl;
         
-        // Create framebuffers
         createFramebuffers();
         std::cout << "✓ Framebuffers created" << std::endl;
         
         // Load shaders
         initShader.create("lbm_init", "lbm_init_frag");
         collisionShader.create("lbm_collision", "lbm_collision_frag");
-        streamingShader.create("lbm_streaming", "lbm_streaming_frag");  // NEW!
+        streamingShader.create("lbm_streaming", "lbm_streaming_frag");
         macroscopicShader.create("lbm_macro", "lbm_macro_frag");
         displayShader.create("lbm_display", "lbm_display_frag");
         std::cout << "✓ Shaders loaded" << std::endl;
         
-        // Initialize distributions
         initializeLBM();
         std::cout << "✓ LBM initialized" << std::endl;
         
-        // Compute initial macroscopic
         computeMacroscopic();
         checkValues();
         
-        std::cout << "\nYou should see a blob that naturally spreads outward!" << std::endl;
+        std::cout << "\nFluid with stable boundaries!" << std::endl;
         std::cout << "✓ Initialization complete!\n" << std::endl;
     }
     
@@ -118,16 +113,12 @@ public:
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         
         glGenTextures(1, &velocityTexture);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, NX, NY, 0, GL_RG, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     
     void createFramebuffers() {
@@ -163,10 +154,6 @@ public:
         
         GLenum macroBuffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
         glDrawBuffers(2, macroBuffers);
-        
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            std::cerr << "ERROR: Macro FBO incomplete!" << std::endl;
-        }
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
@@ -214,7 +201,7 @@ public:
         pingPong = !pingPong;
     }
     
-    void runStreaming() {
+    void runStreamingWithBoundaries() {
         int src = pingPong ? 1 : 0;
         int dst = pingPong ? 0 : 1;
         
@@ -276,15 +263,24 @@ public:
         glReadPixels(NX/2-1, NY/2-1, 3, 3, GL_RED, GL_FLOAT, density);
         
         float sum = 0, min = density[0], max = density[0];
+        bool hasNaN = false;
         for (int i = 0; i < 9; i++) {
+            if (std::isnan(density[i])) {
+                hasNaN = true;
+                break;
+            }
             sum += density[i];
             min = std::min(min, density[i]);
             max = std::max(max, density[i]);
         }
         
-        std::cout << "Density check - Center: " << density[4] 
-                  << ", Range: [" << min << ", " << max 
-                  << "], Avg: " << sum/9.0f << std::endl;
+        if (hasNaN) {
+            std::cout << "WARNING: NaN detected!" << std::endl;
+        } else {
+            std::cout << "Density - Center: " << density[4] 
+                      << ", Range: [" << min << ", " << max 
+                      << "], Avg: " << sum/9.0f << std::endl;
+        }
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
@@ -310,7 +306,7 @@ public:
         
         // LBM steps
         runCollision();
-        runStreaming();  // NEW!
+        runStreamingWithBoundaries();  // Combined!
         computeMacroscopic();
         
         if (frameCount % 100 == 0) {
@@ -332,9 +328,9 @@ public:
 
 int main() {
     gl.init();
-    window.create("LBM Step 3.1 - Streaming", 800, 800);
+    window.create("LBM Complete - Fixed", 800, 800);
     
-    LBMStreamingTest sim;
+    LBMComplete sim;
     sim.initialize();
     
     gl.set_clear_color(0.1f, 0.1f, 0.1f, 1.0f);
