@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LBM_Step1_0)
+project(LBM_Step2_0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,7 +14,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glad/include
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glfw/include
     ${CMAKE_SOURCE_DIR}/lib/flgl/lib/glm
-    ${CMAKE_SOURCE_DIR}/include  # ADD THIS LINE
+    ${CMAKE_SOURCE_DIR}/include
     ${OPENGL_INCLUDE_DIRS}
 )
 
@@ -23,7 +23,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${OPENGL_LIBRARIES}
 )
 
-# Platform specific
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
     find_package(Threads REQUIRED)
@@ -33,8 +32,10 @@ if(UNIX AND NOT APPLE)
         Threads::Threads
     )
 endif()
+
 set(SHADER_NAMES
     density_display
+    velocity_display
 )
 
 foreach(SHADER_NAME ${SHADER_NAMES})
