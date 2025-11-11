@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LBM_Step2_1)
+project(LBM_Step3_1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,8 +34,11 @@ if(UNIX AND NOT APPLE)
 endif()
 
 set(SHADER_NAMES
-    density_display
-    advection
+    lbm_init
+    lbm_collision
+    lbm_streaming
+    lbm_macro
+    lbm_display
 )
 
 foreach(SHADER_NAME ${SHADER_NAMES})
