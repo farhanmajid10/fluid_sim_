@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LBM_Step2_0)
+project(LBM_Step2_1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,7 +35,7 @@ endif()
 
 set(SHADER_NAMES
     density_display
-    velocity_display
+    advection
 )
 
 foreach(SHADER_NAME ${SHADER_NAMES})

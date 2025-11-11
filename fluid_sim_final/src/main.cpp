@@ -8,23 +8,22 @@
 #include <chrono>
 #include <iomanip>
 
-class VelocityFieldTest {
+class AdvectionTest {
 private:
     Mesh<Vt_2Dclassic> screenQuad;
-    Shader velocityDisplayShader;
-    Shader densityDisplayShader;
-    GLuint densityTexture;
+    Shader displayShader;
+    Shader advectionShader;
+    
+    GLuint densityTextures[2];  // Ping-pong buffers
     GLuint velocityTexture;
+    GLuint fbo[2];  // Framebuffers for ping-pong
     
     static constexpr int NX = 256;
     static constexpr int NY = 256;
     
-    bool showVelocity = true;
-    
-    // Time tracking
-    std::chrono::steady_clock::time_point startTime;
-    std::chrono::steady_clock::time_point lastSwitch;
-    float switchInterval = 2.0f; // seconds
+    bool pingPong = false;
+    int frameCount = 0;
+    float dt = 0.01f;  // Time step
     
     std::vector<Vt_2Dclassic> quadVertices = {
         {{-1.0f,  1.0f}, {0.0f, 1.0f}},
@@ -53,61 +52,63 @@ private:
 
 public:
     void initialize() {
-        std::cout << "=== Step 2.0: Velocity Field Visualization ===" << std::endl;
-        
-        // Initialize timers
-        startTime = std::chrono::steady_clock::now();
-        lastSwitch = startTime;
+        std::cout << "=== Step 2.1: Advection Test ===" << std::endl;
         
         // Create quad
         screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices);
         std::cout << "✓ Quad created" << std::endl;
         
         // Create textures
-        createDensityTexture();
-        std::cout << "✓ Density texture created" << std::endl;
+        createDensityTextures();
+        std::cout << "✓ Density textures created (ping-pong)" << std::endl;
         
         createVelocityTexture();
         std::cout << "✓ Velocity texture created" << std::endl;
         
+        createFramebuffers();
+        std::cout << "✓ Framebuffers created" << std::endl;
+        
         // Load shaders
-        velocityDisplayShader.create("velocity_display", "velocity_display_frag");
-        densityDisplayShader.create("density_display", "density_display_frag");
+        displayShader.create("density_display", "density_display_frag");
+        advectionShader.create("advection", "advection_frag");
         std::cout << "✓ Shaders loaded" << std::endl;
         
-        std::cout << "\nThe display alternates every " << switchInterval << " seconds:" << std::endl;
-        std::cout << "  - Velocity Field (swirling colors)" << std::endl;
-        std::cout << "  - Density (4 blobs)" << std::endl;
+        std::cout << "\nYou should see 4 blobs swirling around in a circle!" << std::endl;
         std::cout << "✓ Initialization complete!\n" << std::endl;
     }
     
-    void createDensityTexture() {
+    void createDensityTextures() {
         float* densityData = new float[NX * NY];
         
+        // Initialize with base density
         for (int i = 0; i < NX * NY; i++) {
             densityData[i] = 1.0f;
         }
         
-        addBlob(densityData, NX/4, NY/2, 30, 2.0f);
-        addBlob(densityData, 3*NX/4, NY/2, 30, 2.0f);
-        addBlob(densityData, NX/2, NY/4, 25, 1.8f);
-        addBlob(densityData, NX/2, 3*NY/4, 25, 1.8f);
+        // Add 4 blobs
+        addBlob(densityData, NX/4, NY/2, 20, 2.0f);      // Left
+        addBlob(densityData, 3*NX/4, NY/2, 20, 2.0f);    // Right
+        addBlob(densityData, NX/2, NY/4, 20, 1.8f);      // Bottom
+        addBlob(densityData, NX/2, 3*NY/4, 20, 1.8f);    // Top
         
-        glGenTextures(1, &densityTexture);
-        glBindTexture(GL_TEXTURE_2D, densityTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, densityData);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // Create TWO textures for ping-pong
+        for (int i = 0; i < 2; i++) {
+            glGenTextures(1, &densityTextures[i]);
+            glBindTexture(GL_TEXTURE_2D, densityTextures[i]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, densityData);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
         
         delete[] densityData;
     }
     
     void createVelocityTexture() {
-        // Create swirling velocity field (counterclockwise rotation)
         float* velocityData = new float[NX * NY * 2];
         
+        // Create circular velocity field
         for (int y = 0; y < NY; y++) {
             for (int x = 0; x < NX; x++) {
                 int idx = (y * NX + x) * 2;
@@ -117,18 +118,18 @@ public:
                 float dy = y - NY/2.0f;
                 float r = sqrt(dx*dx + dy*dy);
                 
-                if (r > 0.1f) {
-                    // Tangential velocity (perpendicular to radius)
-                    // For counterclockwise: vx = -dy/r, vy = dx/r
-                    float speed = 10.0f;  // Pixels per frame
+                if (r > 1.0f) {
+                    // Rotation speed proportional to radius
+                    float speed = 5.0f;
                     
+                    // Tangential velocity
                     velocityData[idx] = (-dy / r) * speed;     // vx
                     velocityData[idx+1] = (dx / r) * speed;    // vy
                     
-                    // Reduce speed at edges
+                    // Fade at edges
                     float maxR = NX/2.0f;
-                    if (r > maxR * 0.7f) {
-                        float fade = 1.0f - (r - maxR*0.7f)/(maxR*0.3f);
+                    if (r > maxR * 0.8f) {
+                        float fade = 1.0f - (r - maxR*0.8f)/(maxR*0.2f);
                         fade = std::max(0.0f, std::min(1.0f, fade));
                         velocityData[idx] *= fade;
                         velocityData[idx+1] *= fade;
@@ -139,14 +140,6 @@ public:
                 }
             }
         }
-        
-        // Print sample values for debugging
-        int centerIdx = (NY/2 * NX + NX/2) * 2;
-        int rightIdx = (NY/2 * NX + (NX/2 + 20)) * 2;
-        std::cout << "Velocity at center: (" << velocityData[centerIdx] 
-                  << ", " << velocityData[centerIdx+1] << ")" << std::endl;
-        std::cout << "Velocity right of center: (" << velocityData[rightIdx] 
-                  << ", " << velocityData[rightIdx+1] << ")" << std::endl;
         
         glGenTextures(1, &velocityTexture);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
@@ -159,53 +152,90 @@ public:
         delete[] velocityData;
     }
     
-    void update() {
-        auto currentTime = std::chrono::steady_clock::now();
-        std::chrono::duration<float> timeSinceSwitch = currentTime - lastSwitch;
-        
-        if (timeSinceSwitch.count() >= switchInterval) {
-            showVelocity = !showVelocity;
-            lastSwitch = currentTime;
+    void createFramebuffers() {
+        for (int i = 0; i < 2; i++) {
+            glGenFramebuffers(1, &fbo[i]);
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
+                                  GL_TEXTURE_2D, densityTextures[i], 0);
             
-            // Show elapsed time for debugging
-            std::chrono::duration<float> totalTime = currentTime - startTime;
-            std::cout << "[" << std::fixed << std::setprecision(1) << totalTime.count() 
-                     << "s] Showing: " << (showVelocity ? "Velocity Field" : "Density") << std::endl;
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                std::cerr << "ERROR: Framebuffer " << i << " incomplete!" << std::endl;
+            }
         }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    
+    void advect() {
+        // Source and destination textures
+        int src = pingPong ? 1 : 0;
+        int dst = pingPong ? 0 : 1;
+        
+        // Render to destination texture
+        glViewport(0, 0, NX, NY);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo[dst]);
+        
+        advectionShader.bind();
+        
+        // Bind source density texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, densityTextures[src]);
+        ShaderHelper::setUniform1i("densityTex", 0);
+        
+        // Bind velocity texture
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, velocityTexture);
+        ShaderHelper::setUniform1i("velocityTex", 1);
+        
+        // Set uniforms
+        ShaderHelper::setUniform1f("dt", dt);
+        ShaderHelper::setUniform2f("texelSize", 1.0f/NX, 1.0f/NY);
+        
+        gl.draw_mesh(screenQuad);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        
+        // Swap buffers
+        pingPong = !pingPong;
     }
     
     void render() {
-        if (showVelocity) {
-            // Show velocity field
-            velocityDisplayShader.bind();
-            
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, velocityTexture);
-            ShaderHelper::setUniform1i("velocityTex", 0);
-            
-        } else {
-            // Show density
-            densityDisplayShader.bind();
-            
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, densityTexture);
-            ShaderHelper::setUniform1i("densityTex", 0);
-        }
+        // Reset viewport for window
+        glViewport(0, 0, window.width, window.height);
+        
+        displayShader.bind();
+        
+        // Display current density texture
+        int current = pingPong ? 1 : 0;
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, densityTextures[current]);
+        ShaderHelper::setUniform1i("densityTex", 0);
         
         gl.draw_mesh(screenQuad);
     }
     
+    void update() {
+        frameCount++;
+        advect();
+        
+        // Print status every 100 frames
+        if (frameCount % 100 == 0) {
+            std::cout << "Frame " << frameCount << " - Advection running smoothly" << std::endl;
+        }
+    }
+    
     void cleanup() {
-        glDeleteTextures(1, &densityTexture);
+        glDeleteTextures(2, densityTextures);
         glDeleteTextures(1, &velocityTexture);
+        glDeleteFramebuffers(2, fbo);
     }
 };
 
 int main() {
     gl.init();
-    window.create("LBM Step 2.0 - Velocity Field", 800, 800);
+    window.create("LBM Step 2.1 - Advection", 800, 800);
     
-    VelocityFieldTest test;
+    AdvectionTest test;
     test.initialize();
     
     gl.set_clear_color(0.1f, 0.1f, 0.1f, 1.0f);
