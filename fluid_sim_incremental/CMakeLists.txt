@@ -1,18 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
-project(IncrementalLBM_Step5)
+project(MinimalLBM)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-endif()
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic")
-    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
-endif()
 
 find_package(OpenGL REQUIRED)
 add_subdirectory(lib/flgl)
@@ -45,14 +35,12 @@ endif()
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/lib/flgl/res/default_shaders)
 
+# Add simple_collision to the list!
 set(SHADER_NAMES
-    lbm_init5
-    lbm_collision5
-    lbm_streaming5
-    lbm_boundary5
-    lbm_drop5
-    lbm_macro5
-    display5
+    simple_init
+    simple_collision
+    simple_macro
+    simple_display
 )
 
 foreach(SHADER_NAME ${SHADER_NAMES})
@@ -67,8 +55,3 @@ foreach(SHADER_NAME ${SHADER_NAMES})
         COPYONLY
     )
 endforeach()
-
-add_custom_target(copy_shaders ALL COMMENT "Copying Step 5 shaders")
-add_dependencies(${PROJECT_NAME} copy_shaders)
-
-message(STATUS "Step 5: Full LBM with mouse interaction and boundaries")
