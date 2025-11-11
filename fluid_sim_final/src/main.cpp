@@ -15,7 +15,7 @@ private:
     Shader initShader;
     Shader collisionShader;
     Shader streamingShader;
-    Shader forceShader;  // NEW - for mouse forces
+    Shader forceShader;
     Shader macroscopicShader;
     Shader displayShader;
     
@@ -47,7 +47,7 @@ private:
     static constexpr int NY = 256;
     
     // LBM parameters
-    static constexpr float TAU = 0.55f;
+    static constexpr float TAU = 0.52f;  // Adjusted for better wave interaction
     
     std::vector<Vt_2Dclassic> quadVertices = {
         {{-1.0f,  1.0f}, {0.0f, 1.0f}},
@@ -91,7 +91,8 @@ public:
         computeMacroscopic();
         
         std::cout << "\n=== INTERACTIVE FLUID ===" << std::endl;
-        std::cout << "CLICK and DRAG to create disturbances!" << std::endl;
+        std::cout << "CLICK and DRAG to create waves!" << std::endl;
+        std::cout << "Create multiple waves to see them interact!" << std::endl;
         std::cout << "✓ Ready!\n" << std::endl;
     }
     
@@ -229,8 +230,8 @@ public:
         ShaderHelper::setUniform2f("mouseVel", 
             (mouseX - prevMouseX) * 100.0f, 
             (mouseY - prevMouseY) * 100.0f);
-        ShaderHelper::setUniform1f("forceRadius", 0.05f);
-        ShaderHelper::setUniform1f("forceStrength", 0.3f);
+        ShaderHelper::setUniform1f("forceRadius", 0.04f);   // Larger area
+        ShaderHelper::setUniform1f("forceStrength", 0.15f);   // Stronger force
         
         gl.draw_mesh(screenQuad);
         

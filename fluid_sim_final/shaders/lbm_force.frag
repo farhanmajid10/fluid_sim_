@@ -44,18 +44,18 @@ void main() {
     // Apply force near mouse
     float dist = length(texCoord - mousePos);
     if (dist < forceRadius) {
-        // Gaussian force
+        // Gentler Gaussian force
         float force = forceStrength * exp(-dist*dist / (forceRadius*forceRadius * 0.1));
         
         // Compute current density
         float rho = f0123.x + f0123.y + f0123.z + f0123.w +
                     f4567.x + f4567.y + f4567.z + f4567.w + f8;
         
-        // Add density perturbation
-        rho += force * 0.2;
+        // SUBTLE density perturbation
+        rho += force * 0.1;  // Much less
         
-        // Add velocity from mouse movement
-        vec2 u = mouseVel * force * 0.01;
+        // GENTLE velocity from mouse movement
+        vec2 u = mouseVel * force * 0.005;  // Much less
         
         // Reinitialize to new equilibrium
         distOut0.x = equilibrium(0, rho, u);

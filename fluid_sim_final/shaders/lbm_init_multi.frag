@@ -24,24 +24,9 @@ float equilibrium(int i, float rho, vec2 u) {
 }
 
 void main() {
+    // Start with UNIFORM density - no initial perturbations
     float rho = 1.0;
     vec2 u = vec2(0.0, 0.0);
-    
-    // Add multiple density perturbations
-    float dist1 = length(texCoord - vec2(0.3, 0.5));
-    if (dist1 < 0.08) {
-        rho += 0.05 * exp(-dist1*dist1 * 100.0);
-    }
-    
-    float dist2 = length(texCoord - vec2(0.7, 0.5));
-    if (dist2 < 0.08) {
-        rho += 0.05 * exp(-dist2*dist2 * 100.0);
-    }
-    
-    float dist3 = length(texCoord - vec2(0.5, 0.7));
-    if (dist3 < 0.08) {
-        rho += 0.05 * exp(-dist3*dist3 * 100.0);
-    }
     
     // Initialize to equilibrium
     distOut0.x = equilibrium(0, rho, u);
