@@ -20,35 +20,37 @@ const ivec2 e[9] = ivec2[9](
 // Opposite directions for bounce-back
 const int opp[9] = int[9](8, 7, 6, 5, 4, 3, 2, 1, 0);
 
+//fetch a single distribution from texture.
 float fetchDist(int i, vec2 coord) {
     // Clamp to texture boundaries
-    coord = clamp(coord, vec2(0.0), vec2(1.0));
+    coord = clamp(coord, vec2(0.0), vec2(1.0));  //clamp(value, min, max)  prevents reading outside bounds.
     
+    //If `i` is 0, 1, 2, or 3:** Read from `distTex0`
     if (i < 4) {
         vec4 f = texture(distTex0, coord);
         if (i == 0) return f.x;
         if (i == 1) return f.y;
         if (i == 2) return f.z;
         return f.w;
-    } else if (i < 8) {
+    } else if (i < 8) {  // If `i` is 4,5,6, or 7:** Read from `distTex1`
         vec4 f = texture(distTex1, coord);
         if (i == 4) return f.x;
         if (i == 5) return f.y;
         if (i == 6) return f.z;
         return f.w;
-    } else {
+    } else {  //else read from distTex2
         return texture(distTex2, coord).r;
     }
 }
 
 void main() {
-    vec2 texelSize = 1.0 / gridSize;
+    vec2 texelSize = 1.0 / gridSize;  //size of one grid cell in texture coordinates
     vec2 pixel = texCoord * gridSize;
     
     // Stream each distribution
     for (int i = 0; i < 9; i++) {
-        vec2 sourceCoord = texCoord - vec2(e[i]) * texelSize;
-        vec2 sourcePixel = sourceCoord * gridSize;
+        vec2 sourceCoord = texCoord - vec2(e[i]) * texelSize;  //src is one to the left, previous time step.
+        vec2 sourcePixel = sourceCoord * gridSize;  //convert to pixel coord for boundary check.
         
         float value;
         

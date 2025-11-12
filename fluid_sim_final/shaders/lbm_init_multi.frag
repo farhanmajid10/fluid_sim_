@@ -17,6 +17,7 @@ const ivec2 e[9] = ivec2[9](
     ivec2(-1,-1), ivec2(0,-1), ivec2(1,-1)
 );
 
+//f_eq^i = w[i] * ρ * (1 + 3(e_i·u) + 4.5(e_i·u)² - 1.5u²)
 float equilibrium(int i, float rho, vec2 u) {
     float eu = float(e[i].x) * u.x + float(e[i].y) * u.y;
     float u2 = u.x * u.x + u.y * u.y;
@@ -24,11 +25,11 @@ float equilibrium(int i, float rho, vec2 u) {
 }
 
 void main() {
-    // Start with UNIFORM density - no initial perturbations
-    float rho = 1.0;
-    vec2 u = vec2(0.0, 0.0);
+    // starts with uniform density and no initial perturbations
+    float rho = 1.0; //density = 1
+    vec2 u = vec2(0.0, 0.0);  //vel = 0
     
-    // Initialize to equilibrium
+    //init all 9 to equilibrium
     distOut0.x = equilibrium(0, rho, u);
     distOut0.y = equilibrium(1, rho, u);
     distOut0.z = equilibrium(2, rho, u);

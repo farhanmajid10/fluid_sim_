@@ -64,19 +64,19 @@ public:
         std::cout << "Grid: " << NX << "x" << NY << std::endl;
         std::cout << "Tau: " << TAU << std::endl;
         
-        screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices);
+        screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices); //creating a quad that covers the screen.
         std::cout << "✓ Quad created" << std::endl;
         
-        createDistributionTextures();
+        createDistributionTextures();  //create GPU textures for f0 - f8
         std::cout << "✓ Distribution textures created" << std::endl;
         
-        createMacroscopicTextures();
+        createMacroscopicTextures();  //create textures for density/velocity.
         std::cout << "✓ Macroscopic textures created" << std::endl;
         
-        createFramebuffers();
+        createFramebuffers();  //setup render targets.
         std::cout << "✓ Framebuffers created" << std::endl;
         
-        // Load shaders
+        // load shaders, vertex and frag. the frag files get handled in the CMakelists.txt
         initShader.create("lbm_init_multi", "lbm_init_multi_frag");
         collisionShader.create("lbm_collision", "lbm_collision_frag");
         streamingShader.create("lbm_streaming", "lbm_streaming_frag");
@@ -85,10 +85,10 @@ public:
         displayShader.create("lbm_water", "lbm_water_frag");
         std::cout << "✓ Shaders loaded" << std::endl;
         
-        initializeLBM();
-        std::cout << "✓ LBM initialized" << std::endl;
+        initializeLBM();  //set initial fluid state.
+        std::cout << "✓ LBM initialized" << std::endl; 
         
-        computeMacroscopic();
+        computeMacroscopic();  //calculate initial density/veloclity.
         
         std::cout << "\n=== INTERACTIVE FLUID ===" << std::endl;
         std::cout << "CLICK and DRAG to create waves!" << std::endl;
@@ -97,19 +97,20 @@ public:
     }
     
     void createDistributionTextures() {
-        for (int p = 0; p < 2; p++) {
-            for (int i = 0; i < 3; i++) {
-                glGenTextures(1, &distTextures[p][i]);
-                glBindTexture(GL_TEXTURE_2D, distTextures[p][i]);
+        for (int p = 0; p < 2; p++) {  // two sets for pingpong.
+            for (int i = 0; i < 3; i++) {  // 4 in 2 textures and 1 in the other texture- for efficiency. total 9 velocity directions. 
+                glGenTextures(1, &distTextures[p][i]);  //creates uniques ID.
+                glBindTexture(GL_TEXTURE_2D, distTextures[p][i]);  // binds texture using ID.
                 
-                if (i < 2) {
+                if (i < 2) {  //glTexImage2D parameters (target texture, minmap_level, internal format- channels RGBA- 32 bit floating - 128bits/pixel, width, height, border, format of data we are uploading, datatype of each component, pointer to data(set later))
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, NX, NY, 0, 
-                               GL_RGBA, GL_FLOAT, nullptr);
+                               GL_RGBA, GL_FLOAT, nullptr);  // configures texture as RGBA.
                 } else {
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, 
-                               GL_RED, GL_FLOAT, nullptr);
+                               GL_RED, GL_FLOAT, nullptr);  // configures texture as R-only. this one is single channel only.
                 }
                 
+                //no blending in magnification and minification. and use nearest valid edge and don't wrap around.
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -119,12 +120,15 @@ public:
     }
     
     void createMacroscopicTextures() {
-        glGenTextures(1, &densityTexture);
-        glBindTexture(GL_TEXTURE_2D, densityTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, nullptr);
+
+
+        glGenTextures(1, &densityTexture);  //create unique id for density.
+        glBindTexture(GL_TEXTURE_2D, densityTexture); // bind texture for the operations below.
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, NX, NY, 0, GL_RED, GL_FLOAT, nullptr); //allocates gpu memory for textures. R32F, single channel, 32bit floating. one scalar value per cell. 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
+        //same for velocity.
         glGenTextures(1, &velocityTexture);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, NX, NY, 0, GL_RG, GL_FLOAT, nullptr);
@@ -132,7 +136,24 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
     
-    void createFramebuffers() {
+    void createFramebuffers() {  
+/*
+//Essentially, the distTextures are attached to the distFBOs and the density and velocity textues get attached to the macroFBO.
+//### distFBO[0] and distFBO[1]
+distFBO[0] ←──── distTextures[0][0]
+           ←──── distTextures[0][1]
+           ←──── distTextures[0][2]
+
+distFBO[1] ←──── distTextures[1][0]
+           ←──── distTextures[1][1]
+           ←──── distTextures[1][2]
+
+
+### macroFBO
+macroFBO ←──── densityTexture
+         ←──── velocityTexture
+
+*/
         for (int i = 0; i < 2; i++) {
             glGenFramebuffers(1, &distFBO[i]);
             glBindFramebuffer(GL_FRAMEBUFFER, distFBO[i]);
@@ -145,10 +166,10 @@ public:
             
             for (int j = 0; j < 3; j++) {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + j,
-                                      GL_TEXTURE_2D, distTextures[i][j], 0);
+                                      GL_TEXTURE_2D, distTextures[i][j], 0);  // the distribution functions are attached through the attachment points to the buffers.
             }
             
-            glDrawBuffers(3, drawBuffers);
+            glDrawBuffers(3, drawBuffers);  // then the distribution functions are drawn.
             
             if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
                 std::cerr << "ERROR: Distribution FBO " << i << " incomplete!" << std::endl;
@@ -166,35 +187,36 @@ public:
         GLenum macroBuffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
         glDrawBuffers(2, macroBuffers);
         
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);  //unbind.
     }
     
     void initializeLBM() {
-        glViewport(0, 0, NX, NY);
-        glBindFramebuffer(GL_FRAMEBUFFER, distFBO[0]);
+        glViewport(0, 0, NX, NY); //setting pixel area. 
+        glBindFramebuffer(GL_FRAMEBUFFER, distFBO[0]); //binding frame buffer. distFBO[0] -> distTextures[0][0], [0][1], [0][2],
         
-        initShader.bind();
+        initShader.bind();  // runs init shader to set starting values.
         gl.draw_mesh(screenQuad);
         
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, distFBO[0]);
+        //copies the distFBO[0] to distFBo[1].
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, distFBO[0]);  
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, distFBO[1]);
         glBlitFramebuffer(0, 0, NX, NY, 0, 0, NX, NY, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0); //unbind.
     }
     
     void handleMouse() {
         // Get mouse state
         double mx, my;
-        glfwGetCursorPos(glfwGetCurrentContext(), &mx, &my);
+        glfwGetCursorPos(glfwGetCurrentContext(), &mx, &my);  // gets the x and y coord from mouse and puts into mx and my.
         
-        // Convert to normalized coordinates [0,1]
+        // Convert to normalized texture coordinates [0,1]
         mouseX = float(mx) / float(window.width);
-        mouseY = 1.0f - float(my) / float(window.height);  // Flip Y
+        mouseY = 1.0f - float(my) / float(window.height);  // flipped to match texture coordinates.
         
-        mousePressed = glfwGetMouseButton(glfwGetCurrentContext(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        mousePressed = glfwGetMouseButton(glfwGetCurrentContext(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS; 
         
-        // Reset previous position if just started pressing
+        // reset previous position if just started pressing
         if (mousePressed && !wasPressed) {
             prevMouseX = mouseX;
             prevMouseY = mouseY;
@@ -209,19 +231,22 @@ public:
         int src = pingPong ? 1 : 0;
         int dst = pingPong ? 0 : 1;
         
-        glViewport(0, 0, NX, NY);
-        glBindFramebuffer(GL_FRAMEBUFFER, distFBO[dst]);
+        glViewport(0, 0, NX, NY); //match grid size.
+        glBindFramebuffer(GL_FRAMEBUFFER, distFBO[dst]);  // shader writes to distFBO[dst] and other attached textures.
         
         forceShader.bind();
         
+        //distTex0 writes to distTextures[src][0]   
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, distTextures[src][0]);
         ShaderHelper::setUniform1i("distTex0", 0);
         
+        //distTex1 writes to distTextures[src][1]   
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, distTextures[src][1]);
         ShaderHelper::setUniform1i("distTex1", 1);
         
+        //distTex2 writes to distTextures[src][2]   
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, distTextures[src][2]);
         ShaderHelper::setUniform1i("distTex2", 2);
@@ -233,7 +258,7 @@ public:
         ShaderHelper::setUniform1f("forceRadius", 0.04f);   // Larger area
         ShaderHelper::setUniform1f("forceStrength", 0.15f);   // Stronger force
         
-        gl.draw_mesh(screenQuad);
+        gl.draw_mesh(screenQuad);//execs shader on every pixel.
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         pingPong = !pingPong;
@@ -265,7 +290,7 @@ public:
         
         ShaderHelper::setUniform1f("tau", TAU);
         
-        gl.draw_mesh(screenQuad);
+        gl.draw_mesh(screenQuad);  // applies the shader to all pixels.
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         pingPong = !pingPong;
@@ -342,7 +367,7 @@ public:
     }
     
     void update() {
-        frameCount++;
+        frameCount++; 
         
         handleMouse();
         
@@ -367,7 +392,7 @@ public:
 };
 
 int main() {
-    gl.init();
+    gl.init();  //initialize OpenGL context.    
     window.create("LBM Water Simulation - Click & Drag!", 800, 800);
     
     LBMInteractive sim;
@@ -376,10 +401,10 @@ int main() {
     gl.set_clear_color(0.02f, 0.05f, 0.1f, 1.0f);  // Dark blue background
     
     while (!window.should_close()) {
-        sim.update();
-        gl.clear(GL_COLOR_BUFFER_BIT);
-        sim.render();
-        window.update();
+        sim.update();  //physics step
+        gl.clear(GL_COLOR_BUFFER_BIT); 
+        sim.render();  //draw to screen.
+        window.update(); //swap buffers and handle events
     }
     
     sim.cleanup();

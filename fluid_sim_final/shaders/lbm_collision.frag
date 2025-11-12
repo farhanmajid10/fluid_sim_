@@ -39,6 +39,7 @@ void main() {
                 f4567.x + f4567.y + f4567.z + f4567.w + f8;
     
     // Compute velocity
+    //u = (Σ f_i * e_i) / ρ
     vec2 u = vec2(0.0);
     u += f0123.x * vec2(e[0]);
     u += f0123.y * vec2(e[1]);
@@ -52,6 +53,7 @@ void main() {
     u /= rho;
     
     // BGK collision
+    //f_i^new = f_i^old + (f_i^eq - f_i^old) / τ
     distOut0.x = f0123.x + (equilibrium(0, rho, u) - f0123.x) / tau;
     distOut0.y = f0123.y + (equilibrium(1, rho, u) - f0123.y) / tau;
     distOut0.z = f0123.z + (equilibrium(2, rho, u) - f0123.z) / tau;

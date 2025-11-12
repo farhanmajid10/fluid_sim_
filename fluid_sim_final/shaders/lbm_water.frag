@@ -10,7 +10,7 @@ void main() {
     vec2 velocity = texture(velocityTex, texCoord).rg;
     
     // Velocity magnitude for surface effects
-    float velMag = length(velocity) * 20.0;  // Reduced sensitivity
+    float velMag = length(velocity) * 20.0;  // Reduced sensitivity. length calculates vector magnitude(speed), and then scale for foam like effect.
     
     // Water-like color mapping
     vec3 deepWater = vec3(0.0, 0.15, 0.3);
@@ -21,9 +21,16 @@ void main() {
     vec3 color;
     
     // Less sensitive density mapping
+    /*
+        density = 0.94 → (0.94 - 0.99) = -0.05  (low density)
+        density = 0.99 → (0.99 - 0.99) = 0.00   (normal)
+        density = 1.04 → (1.04 - 0.99) = 0.05   (high density)
+    */
+    //and then scale by 10 for visible range.
     float d = (density - 0.99) * 10.0;  // Less sensitive
-    d = clamp(d, -0.5, 1.5);
+    d = clamp(d, -0.5, 1.5);  //so it doesn't become unstable.
     
+    //mix(a, b, t) -> returns  a * (1 - t) + b * t
     if (d < 0.0) {
         color = mix(deepWater * 0.9, deepWater, d + 0.5);
     } else if (d < 0.5) {
@@ -35,9 +42,9 @@ void main() {
     }
     
     // Subtle velocity highlights
-    if (velMag > 0.2) {
+    if (velMag > 0.2) {  //Fluid moving faster than 0.01 units/frame
         color = mix(color, foam, min(0.2, velMag * 0.5));  // Much less white
     }
     
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, 1.0); //output final color
 }

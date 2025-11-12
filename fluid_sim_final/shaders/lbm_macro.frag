@@ -24,6 +24,7 @@ void main() {
                 f4567.x + f4567.y + f4567.z + f4567.w + f8;
     
     // Compute velocity
+    //u = (Σ f_i * e_i) / ρ
     vec2 vel = vec2(0.0);
     vel += f0123.x * vec2(e[0]);
     vel += f0123.y * vec2(e[1]);

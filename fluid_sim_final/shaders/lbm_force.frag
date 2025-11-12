@@ -1,6 +1,7 @@
 #version 330 core
 in vec2 texCoord;
 
+//the distOuti are where shaders write the results.
 layout(location = 0) out vec4 distOut0;
 layout(location = 1) out vec4 distOut1;
 layout(location = 2) out float distOut2;
@@ -13,18 +14,26 @@ uniform vec2 mouseVel;
 uniform float forceRadius;
 uniform float forceStrength;
 
+//lattice weights
 const float w[9] = float[9](
     1.0/36.0, 1.0/9.0, 1.0/36.0,
     1.0/9.0, 4.0/9.0, 1.0/9.0,
     1.0/36.0, 1.0/9.0, 1.0/36.0
 );
 
+//velocity directions
 const ivec2 e[9] = ivec2[9](
     ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1),
     ivec2(-1, 0), ivec2(0, 0), ivec2(1, 0),
     ivec2(-1,-1), ivec2(0,-1), ivec2(1,-1)
 );
 
+//f_eq^i = w[i] * ρ * (1 + 3(e_i·u) + 4.5(e_i·u)² - 1.5u²)
+/*
+eu > 0 → Velocity aligned with direction → More particles travel this way
+eu < 0 → Velocity opposite to direction → Fewer particles travel this way
+eu = 0 → Velocity perpendicular → Neutral
+*/
 float equilibrium(int i, float rho, vec2 u) {
     float eu = float(e[i].x) * u.x + float(e[i].y) * u.y;
     float u2 = u.x * u.x + u.y * u.y;
@@ -32,11 +41,11 @@ float equilibrium(int i, float rho, vec2 u) {
 }
 
 void main() {
-    vec4 f0123 = texture(distTex0, texCoord);
+    vec4 f0123 = texture(distTex0, texCoord);  //look at pixel at texcoord in distTex0, read all channels, store in f0123
     vec4 f4567 = texture(distTex1, texCoord);
-    float f8 = texture(distTex2, texCoord).r;
+    float f8 = texture(distTex2, texCoord).r;  //red channel only.
     
-    // Default: pass through
+    // Default: pass through because force only applies near the cursor.
     distOut0 = f0123;
     distOut1 = f4567;
     distOut2 = f8;
@@ -45,6 +54,7 @@ void main() {
     float dist = length(texCoord - mousePos);
     if (dist < forceRadius) {
         // Gentler Gaussian force
+        //force = forceStrength * exp(-dist² / (forceRadius² * 0.1))
         float force = forceStrength * exp(-dist*dist / (forceRadius*forceRadius * 0.1));
         
         // Compute current density
