@@ -6,6 +6,8 @@
 #include <cmath>
 #include <vector>
 #include <iomanip>
+#include <chrono>
+#include <sstream>
 
 class LBMInteractive {
 private:
@@ -33,6 +35,14 @@ private:
     // State
     bool pingPong = false;
     int frameCount = 0;
+    double lastTime = 0.0;
+    double lastFPSUpdate = 0.0;
+    int framesThisSecond = 0;
+    float currentFPS = 0.0f;
+    double totalTime = 0.0;
+    double frameTimeAccumulator = 0.0;
+    int frameTimeCount = 0;
+    float avgFrameTime = 0.0f;
     
     // Mouse state
     float mouseX = 0.5f;
@@ -43,8 +53,8 @@ private:
     bool wasPressed = false;
     
     // Grid size
-    static constexpr int NX = 256;
     static constexpr int NY = 256;
+    static constexpr int NX = 256;
     
     // LBM parameters
     static constexpr float TAU = 0.52f;  // Adjusted for better wave interaction
@@ -63,6 +73,9 @@ public:
         std::cout << "=== LBM Interactive Fluid Simulation ===" << std::endl;
         std::cout << "Grid: " << NX << "x" << NY << std::endl;
         std::cout << "Tau: " << TAU << std::endl;
+
+        lastTime = glfwGetTime();                   
+        lastFPSUpdate = lastTime;
         
         screenQuad = Mesh<Vt_2Dclassic>::from_vectors(quadVertices, quadIndices); //creating a quad that covers the screen.
         std::cout << "✓ Quad created" << std::endl;
@@ -93,6 +106,7 @@ public:
         std::cout << "\n=== INTERACTIVE FLUID ===" << std::endl;
         std::cout << "CLICK and DRAG to create waves!" << std::endl;
         std::cout << "Create multiple waves to see them interact!" << std::endl;
+        std::cout << "Frame counter and FPS display enabled" << std::endl;
         std::cout << "✓ Ready!\n" << std::endl;
     }
     
@@ -257,6 +271,8 @@ macroFBO ←──── densityTexture
             (mouseY - prevMouseY) * 100.0f);
         ShaderHelper::setUniform1f("forceRadius", 0.04f);   // Larger area
         ShaderHelper::setUniform1f("forceStrength", 0.15f);   // Stronger force
+
+        ShaderHelper::setUniform1i("frameCount", frameCount);
         
         gl.draw_mesh(screenQuad);//execs shader on every pixel.
         
@@ -362,12 +378,56 @@ macroFBO ←──── densityTexture
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
         ShaderHelper::setUniform1i("velocityTex", 1);
+
+        ShaderHelper::setUniform1f("time", float(totalTime));       
+        ShaderHelper::setUniform1i("frameCount", frameCount);       
         
         gl.draw_mesh(screenQuad);
     }
+
+    void updateFrameCounter() {
+        double currentTime = glfwGetTime();
+        double deltaTime = currentTime - lastTime;
+        lastTime = currentTime;
+        
+        // updating total time and frame count
+        totalTime += deltaTime;
+        frameCount++;
+        framesThisSecond++;
+        
+        // updating frame time accumulator for averaging
+        frameTimeAccumulator += deltaTime;
+        frameTimeCount++;
+        
+        // update FPS for every second
+        if (currentTime - lastFPSUpdate >= 1.0) {
+            currentFPS = float(framesThisSecond) / float(currentTime - lastFPSUpdate);
+            avgFrameTime = (frameTimeCount > 0) ? 
+                          float(frameTimeAccumulator / frameTimeCount) * 1000.0f : 0.0f; // convert to ms
+            
+            std::cout << "\r[Frame " << std::setw(6) << frameCount << "] "
+                     << "FPS: " << std::fixed << std::setprecision(1) << currentFPS 
+                     << " | Avg Frame Time: " << std::setprecision(2) << avgFrameTime << "ms"
+                     << " | Total Time: " << std::setprecision(1) << totalTime << "s      " 
+                     << std::flush;
+            
+            // updating window title with FPS
+            std::stringstream titleStream;
+            titleStream << "LBM Water Simulation - FPS: " << std::fixed << std::setprecision(1) 
+                       << currentFPS << " - Frame: " << frameCount;
+            glfwSetWindowTitle(glfwGetCurrentContext(), titleStream.str().c_str());
+            
+            //reseting counters
+            framesThisSecond = 0;
+            lastFPSUpdate = currentTime;
+            frameTimeAccumulator = 0.0;
+            frameTimeCount = 0;
+        }
+    }
     
     void update() {
-        frameCount++; 
+
+        updateFrameCounter();
         
         handleMouse();
         
@@ -378,6 +438,16 @@ macroFBO ←──── densityTexture
         runCollision();
         runStreamingWithBoundaries();
         computeMacroscopic();
+    }
+
+    void printFinalStats() {
+        std::cout << "\n\n=== Final Simulation Statistics ===" << std::endl;
+        std::cout << "Total Frames Rendered: " << frameCount << std::endl;
+        std::cout << "Total Simulation Time: " << std::fixed << std::setprecision(2) 
+                 << totalTime << " seconds" << std::endl;
+        std::cout << "Average FPS: " << std::setprecision(1) 
+                 << (frameCount / totalTime) << std::endl;
+        std::cout << "====================================\n" << std::endl;
     }
     
     void cleanup() {
@@ -407,6 +477,8 @@ int main() {
         window.update(); //swap buffers and handle events
     }
     
+    sim.printFinalStats();
+
     sim.cleanup();
     gl.destroy();
     return 0;
